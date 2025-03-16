@@ -8,6 +8,7 @@
     "build": "vite build"
   },
   "dependencies": {
+    "simplex-noise": "^4.0.3",
     "three": "^0.162.0"
   },
   "devDependencies": {
@@ -26,4 +27,4 @@
   ],
   "author": "",
   "license": "MIT"
-} 
+}

@@ -1,12 +1,23 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls';
+import { createNoise2D } from 'simplex-noise';
 
-// Block types
+// Block types with merged geometries
 const BLOCK_TYPES = {
-    dirt: { color: 0x8b4513 },
-    stone: { color: 0x808080 },
-    grass: { color: 0x567d46 }
+    dirt: { color: 0x8b4513, geometry: null, material: null },
+    stone: { color: 0x808080, geometry: null, material: null },
+    grass: { color: 0x567d46, geometry: null, material: null },
+    bedrock: { color: 0x333333, geometry: null, material: null }
 };
+
+// Terrain generation constants
+const TERRAIN_SIZE = 40; // Size of the world (blocks)
+const NOISE_SCALE = 50; // Scale of the noise (higher = smoother)
+const HEIGHT_SCALE = 10; // Maximum height of terrain
+const HEIGHT_OFFSET = 2; // Minimum height of terrain
+const STONE_THRESHOLD = 0.3; // Height threshold for stone generation
+const CAVE_SCALE = 15; // Scale of cave noise
+const CAVE_THRESHOLD = 0.7; // Threshold for cave generation
 
 // Game state
 const state = {
@@ -15,6 +26,7 @@ const state = {
     moveLeft: false,
     moveRight: false,
     canJump: true,
+    jumpCooldown: 0, // Add jump cooldown timer
     velocity: new THREE.Vector3(),
     direction: new THREE.Vector3(),
     prevTime: performance.now(),
@@ -27,12 +39,18 @@ const state = {
 
 // Physics constants
 const GRAVITY = 30;
-const JUMP_FORCE = 12;
+const JUMP_FORCE = 12; // Increased jump force
 const MOVE_SPEED = 6;
 const DAMPING = 0.9; // Friction
 const PLAYER_HEIGHT = 1.6; // Typical Minecraft player height
 const GROUND_LEVEL = 0; // Ground level position
+const MAX_FALL_SPEED = 50; // Maximum falling speed
 const HEIGHT_TRANSITION_SPEED = 10; // Speed of height adjustment
+const JUMP_COOLDOWN = 0.2; // Add cooldown to prevent double jumps
+
+// Spatial partitioning
+const CHUNK_SIZE = 16;
+const chunks = new Map(); // Map of chunk coordinates to arrays of blocks
 
 // Scene setup
 const scene = new THREE.Scene();
@@ -40,7 +58,7 @@ scene.background = new THREE.Color(0x87CEEB); // Sky blue
 
 // Camera setup
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.set(0, PLAYER_HEIGHT, 0);
+camera.position.set(TERRAIN_SIZE / 2, HEIGHT_SCALE + 2, TERRAIN_SIZE / 2);
 
 // Renderer setup
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -72,49 +90,83 @@ const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
 directionalLight.position.set(5, 10, 5);
 scene.add(directionalLight);
 
-// Create ground
-const groundGeometry = new THREE.PlaneGeometry(100, 100);
-const groundMaterial = new THREE.MeshPhongMaterial({ 
-    color: 0x567d46,
-    side: THREE.DoubleSide 
-});
-const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-ground.rotation.x = -Math.PI / 2; // Rotate to be flat
-ground.position.y = GROUND_LEVEL;
-scene.add(ground);
+// Initialize merged geometries
+function initBlockGeometries() {
+    const baseGeometry = new THREE.BoxGeometry(1, 1, 1);
+    
+    for (const type in BLOCK_TYPES) {
+        BLOCK_TYPES[type].material = new THREE.MeshPhongMaterial({ 
+            color: BLOCK_TYPES[type].color 
+        });
+        BLOCK_TYPES[type].geometry = baseGeometry;
+    }
+}
 
-// Helper function to get block at position
+// Get chunk key from position
+function getChunkKey(x, z) {
+    const chunkX = Math.floor(x / CHUNK_SIZE);
+    const chunkZ = Math.floor(z / CHUNK_SIZE);
+    return `${chunkX},${chunkZ}`;
+}
+
+// Get chunk from position
+function getChunk(x, z) {
+    const key = getChunkKey(x, z);
+    if (!chunks.has(key)) {
+        chunks.set(key, []);
+    }
+    return chunks.get(key);
+}
+
+// Optimized block lookup
 function getBlockAt(position) {
-    return state.blocks.find(block => 
+    const chunk = getChunk(position.x, position.z);
+    return chunk.find(block => 
         Math.abs(block.position.x - position.x) < 0.1 &&
         Math.abs(block.position.y - position.y) < 0.1 &&
         Math.abs(block.position.z - position.z) < 0.1
     );
 }
 
-// Create a simple cube (block)
+// Create a block with shared geometry
 function createBlock(x, y, z, blockType = 'dirt') {
-    const geometry = new THREE.BoxGeometry(1, 1, 1);
-    const material = new THREE.MeshPhongMaterial({ 
-        color: BLOCK_TYPES[blockType].color
-    });
-    const cube = new THREE.Mesh(geometry, material);
-    cube.position.set(x, y, z);
-    cube.userData.blockType = blockType;
-    scene.add(cube);
-    state.blocks.push(cube);
-    return cube;
+    const type = BLOCK_TYPES[blockType];
+    const block = new THREE.Mesh(type.geometry, type.material);
+    block.position.set(x, y, z);
+    block.userData.blockType = blockType;
+    
+    // Add to spatial partition
+    const chunk = getChunk(x, z);
+    chunk.push(block);
+    
+    scene.add(block);
+    state.blocks.push(block);
+    return block;
 }
 
 // Function to break block
 function breakBlock() {
     if (state.selectedBlock) {
-        const index = state.blocks.indexOf(state.selectedBlock);
-        if (index > -1) {
-            scene.remove(state.selectedBlock);
-            state.blocks.splice(index, 1);
+        // Remove from scene
+        scene.remove(state.selectedBlock);
+        
+        // Remove from blocks array
+        const blockIndex = state.blocks.indexOf(state.selectedBlock);
+        if (blockIndex > -1) {
+            state.blocks.splice(blockIndex, 1);
         }
+        
+        // Remove from chunk
+        const pos = state.selectedBlock.position;
+        const chunk = getChunk(pos.x, pos.z);
+        const chunkIndex = chunk.indexOf(state.selectedBlock);
+        if (chunkIndex > -1) {
+            chunk.splice(chunkIndex, 1);
+        }
+        
         state.selectedBlock = null;
+        state.selectedBlockFace = null;
+        selectionOutline.visible = false;
     }
 }
 
@@ -203,9 +255,10 @@ function onKeyDown(event) {
             state.moveRight = true;
             break;
         case 'Space':
-            if (state.canJump) {
+            if (state.canJump && state.jumpCooldown <= 0) {
                 state.velocity.y = JUMP_FORCE;
                 state.canJump = false;
+                state.jumpCooldown = JUMP_COOLDOWN;
             }
             break;
     }
@@ -232,19 +285,30 @@ function onKeyUp(event) {
     }
 }
 
-// Collision detection helper
+// Optimized collision detection
 function checkBlockCollision() {
-    const playerPosition = camera.position.clone();
+    const playerPos = camera.position;
+    const chunkKey = getChunkKey(playerPos.x, playerPos.z);
     let highestBlock = GROUND_LEVEL;
 
-    for (const block of state.blocks) {
-        if (playerPosition.x >= block.position.x - 0.5 && 
-            playerPosition.x <= block.position.x + 0.5 &&
-            playerPosition.z >= block.position.z - 0.5 && 
-            playerPosition.z <= block.position.z + 0.5) {
-            if (block.position.y + 1 > highestBlock && 
-                block.position.y + 1 <= playerPosition.y) {
-                highestBlock = block.position.y + 1;
+    // Check current chunk and adjacent chunks
+    for (let dx = -1; dx <= 1; dx++) {
+        for (let dz = -1; dz <= 1; dz++) {
+            const checkX = Math.floor(playerPos.x / CHUNK_SIZE) + dx;
+            const checkZ = Math.floor(playerPos.z / CHUNK_SIZE) + dz;
+            const key = `${checkX},${checkZ}`;
+            const chunk = chunks.get(key);
+            
+            if (!chunk) continue;
+
+            for (const block of chunk) {
+                if (Math.abs(block.position.x - playerPos.x) <= 0.5 && 
+                    Math.abs(block.position.z - playerPos.z) <= 0.5) {
+                    if (block.position.y + 1 > highestBlock && 
+                        block.position.y + 1 <= playerPos.y) {
+                        highestBlock = block.position.y + 1;
+                    }
+                }
             }
         }
     }
@@ -252,13 +316,56 @@ function checkBlockCollision() {
     return highestBlock;
 }
 
-// Create initial blocks
-for (let i = -5; i < 5; i++) {
-    for (let j = -5; j < 5; j++) {
-        const blockType = Math.random() < 0.3 ? 'stone' : 'dirt';
-        createBlock(i, 0.5, j, blockType);
+// Optimized terrain generation
+function generateTerrain() {
+    const noise2D = createNoise2D();
+    const caveNoise3D = (x, y, z) => {
+        return noise2D(x / CAVE_SCALE, (y + z) / CAVE_SCALE);
+    };
+
+    // Pre-calculate heights for the entire terrain
+    const heights = new Array(TERRAIN_SIZE);
+    for (let x = 0; x < TERRAIN_SIZE; x++) {
+        heights[x] = new Array(TERRAIN_SIZE);
+        for (let z = 0; z < TERRAIN_SIZE; z++) {
+            const nx = x / NOISE_SCALE;
+            const nz = z / NOISE_SCALE;
+            heights[x][z] = Math.floor(
+                (noise2D(nx, nz) + 1) * 0.5 * HEIGHT_SCALE + HEIGHT_OFFSET
+            );
+        }
+    }
+
+    // Generate blocks using pre-calculated heights
+    for (let x = 0; x < TERRAIN_SIZE; x++) {
+        for (let z = 0; z < TERRAIN_SIZE; z++) {
+            const height = heights[x][z];
+            
+            for (let y = 0; y < height; y++) {
+                if (y > 1 && caveNoise3D(x, y, z) > CAVE_THRESHOLD) {
+                    continue;
+                }
+
+                let blockType;
+                if (y === 0) {
+                    blockType = 'bedrock';
+                } else if (y < height - 1) {
+                    blockType = y / height > STONE_THRESHOLD ? 'stone' : 'dirt';
+                } else {
+                    blockType = 'grass';
+                }
+
+                createBlock(x, y, z, blockType);
+            }
+        }
     }
 }
+
+// Initialize block geometries before generating terrain
+initBlockGeometries();
+
+// Generate the terrain instead of the flat blocks
+generateTerrain();
 
 // Initialize hotbar
 initHotbar();
@@ -271,78 +378,93 @@ function animate() {
         const time = performance.now();
         const delta = Math.min((time - state.prevTime) / 1000, 0.1);
 
-        // Update raycaster
-        raycaster.ray.origin.copy(camera.position);
-        raycaster.ray.direction.copy(controls.getDirection(new THREE.Vector3()));
-        
-        // Check for block intersection
-        const intersects = raycaster.intersectObjects(state.blocks);
-        
-        if (intersects.length > 0 && intersects[0].distance <= maxReach) {
-            state.selectedBlock = intersects[0].object;
-            state.selectedBlockFace = intersects[0].face.normal;
-            selectionOutline.position.copy(state.selectedBlock.position);
-            selectionOutline.visible = true;
-        } else {
-            state.selectedBlock = null;
-            state.selectedBlockFace = null;
-            selectionOutline.visible = false;
-        }
-
-        // Apply gravity if we're above the target height
-        if (camera.position.y > state.targetHeight) {
-            state.velocity.y -= GRAVITY * delta;
-        }
-
-        // Get current surface height at player position
-        const surfaceHeight = checkBlockCollision();
-        const minHeight = Math.max(PLAYER_HEIGHT + surfaceHeight, PLAYER_HEIGHT);
-        state.targetHeight = minHeight;
-
-        // Smooth height transition
-        if (!state.canJump) {
-            camera.position.y += state.velocity.y * delta;
-            if (camera.position.y < state.targetHeight) {
-                camera.position.y = state.targetHeight;
-                state.velocity.y = 0;
-                state.canJump = true;
-            }
-        } else {
-            const heightDiff = state.targetHeight - camera.position.y;
-            if (Math.abs(heightDiff) > 0.01) {
-                camera.position.y += heightDiff * HEIGHT_TRANSITION_SPEED * delta;
+        // Update physics at a lower frequency
+        if (time - state.prevTime > 16) { // ~60 FPS
+            // Update raycaster
+            raycaster.ray.origin.copy(camera.position);
+            raycaster.ray.direction.copy(controls.getDirection(new THREE.Vector3()));
+            
+            // Check for block intersection
+            const currentChunk = getChunk(camera.position.x, camera.position.z);
+            const intersects = raycaster.intersectObjects(currentChunk);
+            
+            if (intersects.length > 0 && intersects[0].distance <= maxReach) {
+                state.selectedBlock = intersects[0].object;
+                state.selectedBlockFace = intersects[0].face.normal;
+                selectionOutline.position.copy(state.selectedBlock.position);
+                selectionOutline.visible = true;
             } else {
-                camera.position.y = state.targetHeight;
+                state.selectedBlock = null;
+                state.selectedBlockFace = null;
+                selectionOutline.visible = false;
             }
-        }
 
-        // Movement direction
-        state.direction.z = Number(state.moveForward) - Number(state.moveBackward);
-        state.direction.x = Number(state.moveRight) - Number(state.moveLeft);
-        state.direction.normalize();
+            // Get current surface height at player position
+            const surfaceHeight = checkBlockCollision();
+            const targetHeight = surfaceHeight + PLAYER_HEIGHT;
+            
+            // Update jump cooldown
+            if (state.jumpCooldown > 0) {
+                state.jumpCooldown -= delta;
+            }
 
-        // Update velocity based on input
-        if (state.moveForward || state.moveBackward) {
-            state.velocity.z = -state.direction.z * MOVE_SPEED;
-        } else {
-            state.velocity.z *= DAMPING;
-        }
+            // If we're falling or jumping (not walking up blocks)
+            if (camera.position.y > targetHeight + 0.1 || state.velocity.y > 0) {
+                // Apply gravity and check for ground collision
+                state.velocity.y -= GRAVITY * delta;
+                state.velocity.y = Math.max(state.velocity.y, -MAX_FALL_SPEED); // Limit fall speed
+                
+                camera.position.y += state.velocity.y * delta;
+                
+                // Check if we hit the ground
+                if (camera.position.y < targetHeight) {
+                    camera.position.y = targetHeight;
+                    state.velocity.y = 0;
+                    state.canJump = true;
+                    state.jumpCooldown = 0;
+                }
+            } 
+            // If we're walking up/down blocks
+            else {
+                const heightDiff = targetHeight - camera.position.y;
+                if (Math.abs(heightDiff) > 0.01) {
+                    camera.position.y += heightDiff * HEIGHT_TRANSITION_SPEED * delta;
+                } else {
+                    camera.position.y = targetHeight;
+                    if (state.jumpCooldown <= 0) {
+                        state.canJump = true;
+                    }
+                }
+            }
 
-        if (state.moveLeft || state.moveRight) {
-            state.velocity.x = -state.direction.x * MOVE_SPEED;
-        } else {
-            state.velocity.x *= DAMPING;
-        }
+            // Movement direction
+            state.direction.z = Number(state.moveForward) - Number(state.moveBackward);
+            state.direction.x = Number(state.moveRight) - Number(state.moveLeft);
+            state.direction.normalize();
 
-        // Apply movement
-        if (Math.abs(state.velocity.x) > 0.01) {
-            controls.moveRight(-state.velocity.x * delta);
-        }
-        if (Math.abs(state.velocity.z) > 0.01) {
-            controls.moveForward(-state.velocity.z * delta);
-        }
+            // Update velocity based on input
+            if (state.moveForward || state.moveBackward) {
+                state.velocity.z = -state.direction.z * MOVE_SPEED;
+            } else {
+                state.velocity.z *= DAMPING;
+            }
 
-        state.prevTime = time;
+            if (state.moveLeft || state.moveRight) {
+                state.velocity.x = -state.direction.x * MOVE_SPEED;
+            } else {
+                state.velocity.x *= DAMPING;
+            }
+
+            // Apply movement
+            if (Math.abs(state.velocity.x) > 0.01) {
+                controls.moveRight(-state.velocity.x * delta);
+            }
+            if (Math.abs(state.velocity.z) > 0.01) {
+                controls.moveForward(-state.velocity.z * delta);
+            }
+
+            state.prevTime = time;
+        }
     }
 
     renderer.render(scene, camera);
