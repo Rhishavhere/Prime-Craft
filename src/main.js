@@ -212,6 +212,8 @@ function initHotbar() {
 
 // Event listeners
 document.addEventListener('mousedown', function(event) {
+    if (!gameState.isPlaying) return;
+    
     if (!controls.isLocked) {
         controls.lock();
         return;
@@ -232,11 +234,26 @@ document.addEventListener('contextmenu', function(event) {
     event.preventDefault();
 });
 
-document.addEventListener('keydown', onKeyDown);
-document.addEventListener('keyup', onKeyUp);
+// Fix the escape key handler by moving it to a global scope
+// and making it work in both playing and paused states
+document.addEventListener('keydown', function(event) {
+    if (event.code === 'Escape') {
+        // If we're playing and not paused, show the pause menu
+        if (gameState.isPlaying && !gameState.isPaused) {
+            pauseGame();
+        }
+        // If we're paused, resume the game
+        else if (gameState.isPlaying && gameState.isPaused) {
+            resumeGame();
+        }
+    }
+});
 
-// Movement controls
+// Update the onKeyDown function to avoid handling Escape key twice
 function onKeyDown(event) {
+    // Skip Escape key as it's handled globally
+    if (event.code === 'Escape') return;
+    
     switch (event.code) {
         case 'ArrowUp':
         case 'KeyW':
@@ -264,6 +281,43 @@ function onKeyDown(event) {
     }
 }
 
+// Update the pointer lock event listeners to handle escape menu better
+controls.addEventListener('lock', function() {
+    if (gameState.isPlaying) {
+        document.addEventListener('keydown', onKeyDown);
+        document.addEventListener('keyup', onKeyUp);
+    }
+});
+
+controls.addEventListener('unlock', function() {
+    // Only pause if we're playing, not paused, and not exiting to menu
+    if (gameState.isPlaying && !gameState.isPaused && !gameState.exitingToMenu) {
+        pauseGame();
+    }
+    document.removeEventListener('keydown', onKeyDown);
+    document.removeEventListener('keyup', onKeyUp);
+});
+
+// Update the exitToMenu function to set the exitingToMenu flag
+function exitToMenu() {
+    gameState.exitingToMenu = true;
+    escapeMenu.classList.add('menu-hidden');
+    startMenu.classList.remove('menu-hidden');
+    gameState.isPlaying = false;
+    gameState.isPaused = false;
+    controls.unlock();
+    
+    // Reset player position
+    camera.position.set(TERRAIN_SIZE / 2, HEIGHT_SCALE + 2, TERRAIN_SIZE / 2);
+    state.velocity.set(0, 0, 0);
+    
+    // Reset the flag after a short delay
+    setTimeout(() => {
+        gameState.exitingToMenu = false;
+    }, 100);
+}
+
+// Movement controls
 function onKeyUp(event) {
     switch (event.code) {
         case 'ArrowUp':
@@ -370,11 +424,53 @@ generateTerrain();
 // Initialize hotbar
 initHotbar();
 
+// Add at the top of the file with other state variables
+const gameState = {
+    isPlaying: false,
+    isPaused: false,
+    exitingToMenu: false
+};
+
+// Add after the scene setup
+// Menu elements
+const startMenu = document.getElementById('start-menu');
+const escapeMenu = document.getElementById('escape-menu');
+const startGameButton = document.getElementById('start-game');
+const resumeGameButton = document.getElementById('resume-game');
+const exitToMenuButton = document.getElementById('exit-to-menu');
+
+// Menu event listeners
+startGameButton.addEventListener('click', startGame);
+resumeGameButton.addEventListener('click', resumeGame);
+exitToMenuButton.addEventListener('click', exitToMenu);
+
+// Menu functions
+function startGame() {
+    startMenu.classList.add('menu-hidden');
+    gameState.isPlaying = true;
+    controls.lock();
+}
+
+function pauseGame() {
+    if (gameState.isPlaying && !gameState.isPaused) {
+        escapeMenu.classList.remove('menu-hidden');
+        gameState.isPaused = true;
+        controls.unlock();
+    }
+}
+
+function resumeGame() {
+    escapeMenu.classList.add('menu-hidden');
+    gameState.isPaused = false;
+    controls.lock();
+}
+
 // Animation loop
 function animate() {
     requestAnimationFrame(animate);
 
-    if (controls.isLocked) {
+    // Only update game logic if playing and not paused
+    if (gameState.isPlaying && !gameState.isPaused && controls.isLocked) {
         const time = performance.now();
         const delta = Math.min((time - state.prevTime) / 1000, 0.1);
 
