@@ -1,7 +1,7 @@
 {
-  "name": "mycraft",
+  "name": "prime-craft",
   "version": "1.0.0",
-  "description": "A simple Minecraft clone using JavaScript",
+  "description": "Prime Craft - A modern Minecraft-inspired voxel game built with JavaScript and Three.js",
   "main": "src/index.js",
   "scripts": {
     "start": "vite",
@@ -12,5 +12,18 @@
   },
   "devDependencies": {
     "vite": "^5.1.4"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yourusername/Prime-Craft.git"
+  },
+  "keywords": [
+    "minecraft",
+    "voxel",
+    "game",
+    "threejs",
+    "javascript"
+  ],
+  "author": "",
+  "license": "MIT"
 } 
