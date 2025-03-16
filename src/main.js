@@ -11,7 +11,7 @@ const BLOCK_TYPES = {
 };
 
 // Terrain generation constants
-const TERRAIN_SIZE = 40; // Size of the world (blocks)
+const TERRAIN_SIZE = 50; // Size of the world (blocks)
 const NOISE_SCALE = 50; // Scale of the noise (higher = smoother)
 const HEIGHT_SCALE = 10; // Maximum height of terrain
 const HEIGHT_OFFSET = 2; // Minimum height of terrain
@@ -465,9 +465,107 @@ function resumeGame() {
     controls.lock();
 }
 
-// Animation loop
+// Add developer info variables
+const devInfo = {
+    fps: 0,
+    frameCount: 0,
+    lastFpsUpdate: 0,
+    fpsUpdateInterval: 500, // Update FPS every 500ms
+    visible: true // Whether the dev info panel is visible
+};
+
+// Get developer info DOM elements
+const devInfoPanel = document.getElementById('dev-info');
+const fpsCounter = document.getElementById('fps-counter');
+const blockCounter = document.getElementById('block-counter');
+const playerPosition = document.getElementById('player-position');
+const playerChunk = document.getElementById('player-chunk');
+const lookingAt = document.getElementById('looking-at');
+const memoryUsage = document.getElementById('memory-usage');
+const renderCalls = document.getElementById('render-calls');
+const triangleCount = document.getElementById('triangle-count');
+const playerVelocity = document.getElementById('player-velocity');
+const chunksLoaded = document.getElementById('chunks-loaded');
+const selectedBlockType = document.getElementById('selected-block-type');
+
+// Function to toggle developer info panel
+function toggleDevInfo() {
+    devInfo.visible = !devInfo.visible;
+    devInfoPanel.style.display = devInfo.visible ? 'block' : 'none';
+}
+
+// Add F3 key handler to toggle developer info
+document.addEventListener('keydown', function(event) {
+    if (event.code === 'F3') {
+        toggleDevInfo();
+        event.preventDefault();
+    }
+});
+
+// Function to update developer info
+function updateDevInfo() {
+    // Update FPS counter
+    devInfo.frameCount++;
+    const now = performance.now();
+    if (now - devInfo.lastFpsUpdate > devInfo.fpsUpdateInterval) {
+        devInfo.fps = Math.round((devInfo.frameCount * 1000) / (now - devInfo.lastFpsUpdate));
+        devInfo.frameCount = 0;
+        devInfo.lastFpsUpdate = now;
+        fpsCounter.textContent = devInfo.fps;
+    }
+    
+    // Update block counter
+    blockCounter.textContent = state.blocks.length;
+    
+    // Update player position
+    const pos = camera.position;
+    playerPosition.textContent = `X: ${pos.x.toFixed(1)}, Y: ${pos.y.toFixed(1)}, Z: ${pos.z.toFixed(1)}`;
+    
+    // Update player chunk
+    const chunkX = Math.floor(pos.x / CHUNK_SIZE);
+    const chunkZ = Math.floor(pos.z / CHUNK_SIZE);
+    playerChunk.textContent = `${chunkX}, ${chunkZ}`;
+    
+    // Update looking at
+    if (state.selectedBlock) {
+        const blockPos = state.selectedBlock.position;
+        const blockType = state.selectedBlock.userData.blockType;
+        lookingAt.textContent = `${blockType} (${blockPos.x.toFixed(0)}, ${blockPos.y.toFixed(0)}, ${blockPos.z.toFixed(0)})`;
+    } else {
+        lookingAt.textContent = 'None';
+    }
+    
+    // Update memory usage (if available)
+    if (window.performance && window.performance.memory) {
+        const memoryMB = Math.round(window.performance.memory.usedJSHeapSize / (1024 * 1024));
+        memoryUsage.textContent = `${memoryMB} MB`;
+    } else {
+        memoryUsage.textContent = 'N/A';
+    }
+    
+    // Update render calls
+    renderCalls.textContent = renderer.info.render.calls;
+    
+    // Update triangle count
+    triangleCount.textContent = renderer.info.render.triangles;
+    
+    // Update player velocity
+    const vel = state.velocity;
+    playerVelocity.textContent = `X: ${vel.x.toFixed(2)}, Y: ${vel.y.toFixed(2)}, Z: ${vel.z.toFixed(2)}`;
+    
+    // Update chunks loaded
+    chunksLoaded.textContent = chunks.size;
+    
+    // Update selected block type
+    selectedBlockType.textContent = state.currentBlockType;
+}
+
+// Update the animation loop to call updateDevInfo
 function animate() {
     requestAnimationFrame(animate);
+    
+    // Update developer info
+    updateDevInfo();
 
     // Only update game logic if playing and not paused
     if (gameState.isPlaying && !gameState.isPaused && controls.isLocked) {

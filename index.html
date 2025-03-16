@@ -107,6 +107,42 @@
             margin-top: 2rem;
             font-size: 0.9rem;
         }
+        
+        /* Developer Info Panel */
+        #dev-info {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            z-index: 90;
+            pointer-events: none;
+            text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.5);
+        }
+        
+        #dev-info table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+        
+        #dev-info td {
+            padding: 2px 8px;
+        }
+        
+        #dev-info td:first-child {
+            color: #8cff66;
+            text-align: right;
+        }
+        
+        #dev-info td:last-child {
+            color: #ffffff;
+            text-align: left;
+        }
     </style>
 </head>
 <body>
@@ -126,6 +162,24 @@
         <button id="resume-game" class="menu-button">Resume Game</button>
         <button id="options-button-pause" class="menu-button">Options</button>
         <button id="exit-to-menu" class="menu-button">Exit to Menu</button>
+    </div>
+    
+    <!-- Developer Info Panel -->
+    <div id="dev-info">
+        <table>
+            <tr><td>FPS:</td><td id="fps-counter">0</td></tr>
+            <tr><td>Blocks:</td><td id="block-counter">0</td></tr>
+            <tr><td>Position:</td><td id="player-position">X: 0, Y: 0, Z: 0</td></tr>
+            <tr><td>Chunk:</td><td id="player-chunk">0, 0</td></tr>
+            <tr><td>Looking at:</td><td id="looking-at">None</td></tr>
+            <tr><td>Memory:</td><td id="memory-usage">0 MB</td></tr>
+            <tr><td>Render calls:</td><td id="render-calls">0</td></tr>
+            <tr><td>Triangles:</td><td id="triangle-count">0</td></tr>
+            <tr><td>Velocity:</td><td id="player-velocity">X: 0, Y: 0, Z: 0</td></tr>
+            <tr><td>Chunks loaded:</td><td id="chunks-loaded">0</td></tr>
+            <tr><td>Selected block:</td><td id="selected-block-type">None</td></tr>
+            <tr><td colspan="2" style="text-align: center; color: #aaa; padding-top: 5px;">Press F3 to toggle</td></tr>
+        </table>
     </div>
     
     <!-- Game UI -->
