@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MyCraft</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+        canvas {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+        #crosshair {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 24px;
+            pointer-events: none;
+        }
+        #hotbar {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 4px;
+            padding: 8px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 8px;
+        }
+        .hotbar-slot {
+            width: 50px;
+            height: 50px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid #555;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .hotbar-slot.selected {
+            border-color: white;
+            background: rgba(255, 255, 255, 0.2);
+        }
+        .block-icon {
+            width: 40px;
+            height: 40px;
+            image-rendering: pixelated;
+        }
+    </style>
+</head>
+<body>
+    <div id="crosshair">+</div>
+    <div id="hotbar">
+        <div class="hotbar-slot selected" data-block="dirt">
+            <div class="block-icon" style="background-color: #8b4513;"></div>
+        </div>
+        <div class="hotbar-slot" data-block="stone">
+            <div class="block-icon" style="background-color: #808080;"></div>
+        </div>
+        <div class="hotbar-slot" data-block="grass">
+            <div class="block-icon" style="background-color: #567d46;"></div>
+        </div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+</body>
+</html> 
