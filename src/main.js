@@ -36,7 +36,7 @@ const BLOCK_TYPES = {
 
 // Terrain generation constants
 const TERRAIN_SIZE = 40; // Size of the world (blocks)
-const NOISE_SCALE = 60; // Scale of the noise (higher = smoother)
+const NOISE_SCALE = 30; // Scale of the noise (higher = smoother)
 const HEIGHT_SCALE = 10; // Maximum height of terrain
 const HEIGHT_OFFSET = 2; // Minimum height of terrain
 const STONE_THRESHOLD = 0.3; // Height threshold for stone generation
