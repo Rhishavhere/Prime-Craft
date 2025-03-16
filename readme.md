@@ -1,11 +1,14 @@
 # ***PrimeCraft*** 
 
 
-PrimeCraft is a minimalist voxel-based sandbox game built with Three.js, offering a simplified block-building experience in your browser.
+PrimeCraft is a Minecraft inspired minimalist voxel-based sandbox game built with Three.js, offering a simplified block-building experience in your browser.
 
-```This project is Minecraft Inspired and loosely a minecraft clone```
 
 *`Build this as an educational project for exploring threejs and thus includes AI written codes and available open resources`*
+
+| Terrain Generation | Placed Blocks as 'HI' |
+| --- | --- |
+| ![Screenshot 1](public/ss2.png) | ![Screenshot 2](public/ss1.png) |
 
 
 ## 🎮 Features
