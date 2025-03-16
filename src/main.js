@@ -2,17 +2,41 @@ import * as THREE from 'three';
 import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls';
 import { createNoise2D } from 'simplex-noise';
 
-// Block types with merged geometries
+// Block types with textures
 const BLOCK_TYPES = {
-    dirt: { color: 0x8b4513, geometry: null, material: null },
-    stone: { color: 0x808080, geometry: null, material: null },
-    grass: { color: 0x567d46, geometry: null, material: null },
-    bedrock: { color: 0x333333, geometry: null, material: null }
+    dirt: { 
+        color: 0x8b4513, // Fallback color
+        texture: '/textures/dirt.png',
+        geometry: null, 
+        material: null 
+    },
+    stone: { 
+        color: 0x808080, // Fallback color
+        texture: '/textures/stone.png',
+        geometry: null, 
+        material: null 
+    },
+    grass: { 
+        color: 0x567d46, // Fallback color
+        textures: {
+            top: '/textures/grass.jpeg',
+            side: '/textures/grass_block_side.png',
+            bottom: '/textures/dirt.png'
+        },
+        geometry: null, 
+        materials: null 
+    },
+    bedrock: { 
+        color: 0x333333, // Fallback color
+        texture: '/textures/bedrock.png',
+        geometry: null, 
+        material: null 
+    },
 };
 
 // Terrain generation constants
-const TERRAIN_SIZE = 50; // Size of the world (blocks)
-const NOISE_SCALE = 50; // Scale of the noise (higher = smoother)
+const TERRAIN_SIZE = 40; // Size of the world (blocks)
+const NOISE_SCALE = 60; // Scale of the noise (higher = smoother)
 const HEIGHT_SCALE = 10; // Maximum height of terrain
 const HEIGHT_OFFSET = 2; // Minimum height of terrain
 const STONE_THRESHOLD = 0.3; // Height threshold for stone generation
@@ -90,14 +114,61 @@ const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
 directionalLight.position.set(5, 10, 5);
 scene.add(directionalLight);
 
-// Initialize merged geometries
+// Initialize merged geometries and load textures
 function initBlockGeometries() {
     const baseGeometry = new THREE.BoxGeometry(1, 1, 1);
+    const textureLoader = new THREE.TextureLoader();
     
     for (const type in BLOCK_TYPES) {
-        BLOCK_TYPES[type].material = new THREE.MeshPhongMaterial({ 
-            color: BLOCK_TYPES[type].color 
-        });
+        if (type === 'grass') {
+            // Special case for grass block with different textures for different faces
+            try {
+                // Load textures for each face
+                const topTexture = textureLoader.load(BLOCK_TYPES[type].textures.top);
+                const sideTexture = textureLoader.load(BLOCK_TYPES[type].textures.side || BLOCK_TYPES[type].textures.top);
+                const bottomTexture = textureLoader.load(BLOCK_TYPES[type].textures.bottom || BLOCK_TYPES[type].textures.top);
+                
+                // Apply pixelated filter
+                [topTexture, sideTexture, bottomTexture].forEach(texture => {
+                    texture.magFilter = THREE.NearestFilter;
+                    texture.minFilter = THREE.NearestFilter;
+                });
+                
+                // Create materials array for each face with darker color
+                BLOCK_TYPES[type].materials = [
+                    new THREE.MeshPhongMaterial({ map: sideTexture, color: 0xaaaaaa }), // right - darkened
+                    new THREE.MeshPhongMaterial({ map: sideTexture, color: 0xaaaaaa }), // left - darkened
+                    new THREE.MeshPhongMaterial({ map: topTexture, color: 0xbbbbbb }),  // top - slightly darkened
+                    new THREE.MeshPhongMaterial({ map: bottomTexture, color: 0xaaaaaa }), // bottom - darkened
+                    new THREE.MeshPhongMaterial({ map: sideTexture, color: 0xaaaaaa }), // front - darkened
+                    new THREE.MeshPhongMaterial({ map: sideTexture, color: 0xaaaaaa })  // back - darkened
+                ];
+            } catch (error) {
+                console.warn(`Failed to load textures for ${type}, using color instead:`, error);
+                BLOCK_TYPES[type].material = new THREE.MeshPhongMaterial({ 
+                    color: BLOCK_TYPES[type].color 
+                });
+            }
+        } else {
+            // Standard blocks with same texture on all sides
+            try {
+                const texture = textureLoader.load(BLOCK_TYPES[type].texture);
+                texture.magFilter = THREE.NearestFilter; // Pixelated look
+                texture.minFilter = THREE.NearestFilter;
+                
+                // Add color tint to darken the texture
+                BLOCK_TYPES[type].material = new THREE.MeshPhongMaterial({ 
+                    map: texture,
+                    color: 0xaaaaaa // Darkening tint (gray color that will multiply with texture)
+                });
+            } catch (error) {
+                console.warn(`Failed to load texture for ${type}, using color instead:`, error);
+                BLOCK_TYPES[type].material = new THREE.MeshPhongMaterial({ 
+                    color: BLOCK_TYPES[type].color 
+                });
+            }
+        }
+        
         BLOCK_TYPES[type].geometry = baseGeometry;
     }
 }
@@ -131,7 +202,16 @@ function getBlockAt(position) {
 // Create a block with shared geometry
 function createBlock(x, y, z, blockType = 'dirt') {
     const type = BLOCK_TYPES[blockType];
-    const block = new THREE.Mesh(type.geometry, type.material);
+    let block;
+    
+    if (blockType === 'grass' && type.materials) {
+        // Use material array for grass blocks
+        block = new THREE.Mesh(type.geometry, type.materials);
+    } else {
+        // Use single material for other blocks
+        block = new THREE.Mesh(type.geometry, type.material);
+    }
+    
     block.position.set(x, y, z);
     block.userData.blockType = blockType;
     
